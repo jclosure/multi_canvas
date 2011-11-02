@@ -1,34 +1,133 @@
 <!doctype html>
 <html>
   <head>
+    <style>
+      body {
+        background: white;
+      }
+      #canvas {
+        border: 2px inset;
+        position: fixed;
+        top: 0;
+        left: 10%;
+        height: 100%;
+        width: 90%;
+        z-index: -100;
+      }
+      #tools {
+        padding: 1ex;
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 10%;
+        width: 10%;
+        z-index: 1000;
+      }
+      #colorSelector {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        background: url(../images/select.png);
+      }
+      #colorSelector div {
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 30px;
+        height: 30px;
+        background: #000 url(../images/select.png) center;
+      }
+    </style>
+    <link rel="stylesheet" media="screen" type="text/css" href="css/colorpicker.css" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js"></script>
+    <script type="text/javascript" src="js/colorpicker.js"></script>
   </head>
-  <body style="background:red">
-    <button id="fgcolor"></button>
-    <button id="bgcolor"></button>
-    <canvas id="canvas" width="150" height="150" />
+  <body>
+    <div id="tools">
+      <div id="colorSelector"><div></div></div>
+      <script>
+      var color = [0,0,0,255];
+      $('#colorSelector').ColorPicker({
+        color: '#0000ff',
+        onShow: function (colpkr) {
+          $(colpkr).fadeIn(500);
+          return false;
+        },
+        onHide: function (colpkr) {
+          $(colpkr).fadeOut(500);
+          return false;
+        },
+        onChange: function (hsb, hex, rgb) {
+        color = [rgb.r, rgb.g, rgb.b, 255];
+          $('#colorSelector div').css('backgroundColor', '#' + hex);
+        }
+      });
+      </script>
+    </div>
+    <canvas id="canvas" />
     <script src="/socket.io/socket.io.js"></script>
-    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js"></script>
     <script>
       //
       // data = { top: #, left: #, width: #, height: #, data: [r,g,b,a,r,g,b,a,...]}
       //
       //
-      $(function(){
-        $('body').mousemove(function(){
-             
-        });
-      });
-      function drawRect(data) {
-        var canvas = document.getElementById('canvas');
-        var ctx = canvas.getContext('2d');
-        var imgData = ctx.createImageData(data.height,data.width);
-        for(var i = 0; i < data.data.length; i++) {
-          imgData.data[i] = data.data[i];
-        }
-        ctx.putImageData(imgData,0,0);
-      }
       var socket = io.connect('//'+location.host);
-      socket.on('raster', drawRect);
+      var canvas = document.getElementById('canvas');
+      var ctx = canvas.getContext('2d');
+      var imgData;
+      function drawRect(raster) {
+        var index = 4 * ((raster.top || 0) * canvas.width + (raster.left || 0));
+        for(var i = 0; i < raster.data.length;) {
+          imgData.data[index+i] = raster.data[i]
+          imgData.data[index+i+1] = raster.data[i+1]
+          imgData.data[index+i+2] = raster.data[i+2]
+          imgData.data[index+i+3] = raster.data[i+3]
+          i+=4;
+          if((i/4) % raster.width === 0) {
+            index += canvas.width * 4 - raster.width * 4;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      socket.on('client-raster', drawRect);
+      socket.on('client-init', function(data) {
+      console.log('init',data)
+        canvas.height = data.height;
+        canvas.width = data.width;
+        imgData = ctx.createImageData(canvas.width,canvas.height)
+        drawRect(data);
+      });
+      socket.on('error',function(){console.error(arguments)})
+      function paintMouse(e) {
+        var data = {
+          left: Math.floor(e.offsetX / canvas.offsetWidth * canvas.width),
+          top: Math.floor(e.offsetY / canvas.offsetHeight * canvas.height),
+          height: 1,
+          width: 1,
+          data: color
+        }
+        console.log(data)
+        drawRect(data)
+        socket.emit('server-raster', data);
+      }
+      
+      var dragging = false;
+      canvas.onmousedown = function(e) {
+        dragging = true;
+        paintMouse(e);
+      }
+      canvas.onmouseup = function(e) {
+        dragging = false;
+        paintMouse(e);
+      }
+      canvas.onmouseout = function(e) {
+        dragging = false;
+      }
+      canvas.onmousemove = function(e) {
+        if (dragging) {
+          paintMouse(e);
+        }
+      }
     </script>
   </body>
 </html>
